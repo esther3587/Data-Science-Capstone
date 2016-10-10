@@ -1,0 +1,159 @@
+---
+title: "Data Science Capstone"
+author: "Shun-Wen Chang"
+date: "September 25, 2016"
+output: html_document
+---
+
+This is the milestone report for Data Science Capstone project from Coursera Data Science Specialization. The objectives of this report is to load the 3 given data sets, summarize the data, and explore the data to understand the frequency distribution of words and 2-gram, 3-gram words.
+
+###0. Examine Data###
+
+Before loading data, let's check the data size and word counts within bash shell.
+
+**check file sizes**<br>
+-rw-r--r--@ 1 EstherChang  staff  167105338 Jul 22  2014 en_US.twitter.txt<br>
+-rw-r--r--@ 1 EstherChang  staff  205811889 Jul 22  2014 en_US.news.txt<br>
+-rw-r--r--@ 1 EstherChang  staff  210160014 Jul 22  2014 en_US.blogs.txt<br>
+
+**check line counts**<br>
+  899288 en_US.blogs.txt<br>
+ 1010242 en_US.news.txt<br>
+ 2360148 en_US.twitter.txt<br>
+ 4269678 total<br>
+
+
+###1. Load Data and necessary packages###
+
+```{r, echo=TRUE}
+setwd("/Users/EstherChang/Documents/R/Data_Science_captone/final/en_US/")
+blog <- readLines("en_US.blogs.txt",skipNul = TRUE, warn = TRUE)
+news <- readLines("en_US.news.txt",skipNul = TRUE, warn = TRUE)
+twitter <- readLines("en_US.twitter.txt",skipNul = TRUE, warn = TRUE)
+
+library(ggplot2)
+library(NLP)
+library(tm)
+library(RWeka)
+
+```
+
+
+###2. Data Sampling###
+Because these data are huge. We need to make a sample subset to do this project. In each file, I select random 1000 entries as my data source and then delete the original data to release memory space.
+
+```{r, echo=TRUE}
+set.seed(100)
+sample_size = 1000
+
+sample_blog <- blog[sample(1:length(blog),sample_size)]
+sample_news <- news[sample(1:length(news),sample_size)]
+sample_twitter <- twitter[sample(1:length(twitter),sample_size)]
+
+```
+
+**Examing the first few lines of each data set:**
+```{r, echo=TRUE}
+head(sample_blog)
+head(sample_twitter)
+head(sample_news)
+```
+
+**Then combine all 3 data and remove originals:**
+
+```{r, echo=TRUE}
+
+sample_data<-rbind(sample_blog,sample_news,sample_twitter)
+rm(blog,news,twitter)
+
+```
+
+###3. Clean Data###
+
+**I clean the data with following rules:**
+1. remove punctuation
+2. remove whitespace
+3. discard numbers since they are irrelavant in our analysis
+4. convert to all lowercases
+
+
+**Clean the data using tm_map:**
+
+```{r, echo=TRUE}
+mycorpus<-VCorpus(VectorSource(sample_data))
+mycorpus <- tm_map(mycorpus, content_transformer(tolower)) # convert to lowercase
+mycorpus <- tm_map(mycorpus, removePunctuation) # remove punctuation
+mycorpus <- tm_map(mycorpus, removeNumbers) # remove numbers
+mycorpus <- tm_map(mycorpus, stripWhitespace) # remove multiple whitespace
+changetospace <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+mycorpus <- tm_map(mycorpus, changetospace, "/|@|\\|")
+
+```
+
+###4. Tokenize the sentences###
+
+We use NGramTokenizer in RWeka package for this task. In this project, we analyze 1gram, 2gram, and 3gram, which I will call "oneGM", "twoGM", and "threeGM", respectively for the n-gram matrices.
+
+
+
+```{r, echo=TRUE}
+
+uniGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 1, max = 1))
+biGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+triGramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+OneT <- NGramTokenizer(mycorpus, Weka_control(min = 1, max = 1))
+oneGM <- TermDocumentMatrix(mycorpus, control = list(tokenize = uniGramTokenizer))
+twoGM <- TermDocumentMatrix(mycorpus, control = list(tokenize = biGramTokenizer))
+threeGM <- TermDocumentMatrix(mycorpus, control = list(tokenize = triGramTokenizer))
+
+```
+
+###5. Generate n-gram histograms###
+
+**Unigram frequency**
+
+```{r, echo=TRUE}
+freqTerms <- findFreqTerms(oneGM, lowfreq = 200)
+termFreq <- rowSums(as.matrix(oneGM[freqTerms,]))
+termFreq <- data.frame(unigram=names(termFreq), frequency=termFreq)
+
+g1 <- ggplot(termFreq, aes(x=reorder(unigram, frequency), y=frequency)) +
+    geom_bar(stat = "identity") +  coord_flip() +
+    theme(legend.title=element_blank()) +
+    xlab("Unigram") + ylab("Frequency") +
+    labs(title = "Top unigrams by frequency")
+print(g1)
+
+```
+
+**Bigram frequency**
+
+```{r, echo=TRUE}
+freqTerms <- findFreqTerms(twoGM, lowfreq = 70)
+termFreq <- rowSums(as.matrix(twoGM[freqTerms,]))
+termFreq <- data.frame(bigram=names(termFreq), frequency=termFreq)
+
+g2 <- ggplot(termFreq, aes(x=reorder(bigram, frequency), y=frequency)) +
+    geom_bar(stat = "identity") +  coord_flip() +
+    theme(legend.title=element_blank()) +
+    xlab("Bigram") + ylab("Frequency") +
+    labs(title = "Top bigrams by frequency")
+print(g2)
+
+```
+
+**Trigram frequency**
+
+```{r, echo=TRUE}
+freqTerms <- findFreqTerms(threeGM, lowfreq = 10)
+termFreq <- rowSums(as.matrix(threeGM[freqTerms,]))
+termFreq <- data.frame(trigram=names(termFreq), frequency=termFreq)
+
+g3 <- ggplot(termFreq, aes(x=reorder(trigram, frequency), y=frequency)) +
+    geom_bar(stat = "identity") +  coord_flip() +
+    theme(legend.title=element_blank()) +
+    xlab("Trigram") + ylab("Frequency") +
+    labs(title = "Top trigrams by frequency")
+print(g3)
+
+```
